@@ -16,6 +16,7 @@ void env_init(void) {
     env_set("SHELL", "nimrodsh");
     env_set("USER", "root");
     env_set("HOME", "/");
+    env_set("HOSTNAME", "baremetal");
 }
 
 int env_set(const char *key, const char *value) {

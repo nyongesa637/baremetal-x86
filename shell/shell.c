@@ -174,6 +174,10 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (strcmp(input, "whoami") == 0) {
+        vga_print("  "); vga_print(env_get("USER") ? env_get("USER") : "root"); vga_print("\n");
+    } else if (strcmp(input, "hostname") == 0) {
+        vga_print("  "); vga_print(env_get("HOSTNAME") ? env_get("HOSTNAME") : "baremetal"); vga_print("\n");
     } else if (starts_with(input, "edit ")) {
         cmd_edit(input + 5);
     } else if (starts_with(input, "wc ")) {
@@ -274,6 +278,8 @@ static void cmd_help(void) {
     vga_print("  unset <k> - Remove variable\n");
     vga_print("  calc <expr>- Calculator (+,-,*,/)\n");
     vga_print("  beep [hz] - PC speaker beep\n");
+    vga_print("  whoami    - Current user\n");
+    vga_print("  hostname  - System hostname\n");
     vga_print("  halt      - Halt the CPU\n");
     vga_print("  reboot    - Reboot the system\n");
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
