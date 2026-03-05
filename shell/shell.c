@@ -48,6 +48,7 @@ static void cmd_pci(void);
 static void cmd_date(void);
 static void cmd_time(void);
 static void cmd_cpuinfo(void);
+static void cmd_hexdump(const char *args);
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -155,6 +156,8 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (starts_with(input, "hexdump ")) {
+        cmd_hexdump(input + 8);
     } else if (strcmp(input, "cpuinfo") == 0) {
         cmd_cpuinfo();
     } else if (strcmp(input, "date") == 0) {
@@ -195,6 +198,7 @@ static void cmd_help(void) {
     vga_print("  write <f> <text> - Write to file\n");
     vga_print("  rm <f>    - Delete a file\n");
     vga_print("  stat <f>  - File info\n");
+    vga_print("  hexdump <f>- Hex dump of file\n");
     vga_set_color(VGA_YELLOW, VGA_BLACK);
     vga_print("=== Tasks ===\n");
     vga_set_color(VGA_WHITE, VGA_BLACK);
@@ -936,5 +940,50 @@ static void cmd_cpuinfo(void) {
     if (info.has_apic) vga_print(" APIC");
     if (info.has_msr)  vga_print(" MSR");
     vga_print("\n");
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void cmd_hexdump(const char *args) {
+    while (*args == ' ') args++;
+    if (!ramfs_exists(args)) {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("File not found: "); vga_print(args); vga_print("\n");
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        return;
+    }
+    char buf[RAMFS_MAX_FILESIZE];
+    int n = ramfs_read(args, buf, RAMFS_MAX_FILESIZE);
+    if (n <= 0) { vga_print("  (empty)\n"); return; }
+
+    static const char hex[] = "0123456789ABCDEF";
+    for (int off = 0; off < n; off += 16) {
+        if (ctrl_c_pressed) break;
+        // Offset
+        vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+        for (int s = 12; s >= 0; s -= 4)
+            vga_putchar(hex[(off >> s) & 0xF]);
+        vga_print("  ");
+        // Hex bytes
+        vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
+        for (int i = 0; i < 16; i++) {
+            if (off + i < n) {
+                uint8_t b = (uint8_t)buf[off + i];
+                vga_putchar(hex[b >> 4]);
+                vga_putchar(hex[b & 0xF]);
+            } else {
+                vga_print("  ");
+            }
+            vga_putchar(' ');
+            if (i == 7) vga_putchar(' ');
+        }
+        // ASCII
+        vga_print(" ");
+        vga_set_color(VGA_YELLOW, VGA_BLACK);
+        for (int i = 0; i < 16 && off + i < n; i++) {
+            char c = buf[off + i];
+            vga_putchar((c >= 32 && c < 127) ? c : '.');
+        }
+        vga_putchar('\n');
+    }
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
 }
