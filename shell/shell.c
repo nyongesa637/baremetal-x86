@@ -18,6 +18,7 @@
 #include "../drivers/rtc.h"
 #include "../cpu/cpuid.h"
 #include "../kernel/env.h"
+#include "../libc/rand.h"
 #include "../drivers/speaker.h"
 
 volatile int editor_mode = 0;
@@ -174,6 +175,16 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (strcmp(input, "rand") == 0 || starts_with(input, "rand ")) {
+        rand_seed(timer_get_ticks());
+        uint32_t max = 100;
+        if (starts_with(input, "rand ")) {
+            const char *a = input + 5;
+            max = 0;
+            while (*a >= '0' && *a <= '9') { max = max * 10 + (*a - '0'); a++; }
+            if (max == 0) max = 100;
+        }
+        vga_print("  "); vga_print_dec(rand_range(1, max)); vga_print("\n");
     } else if (strcmp(input, "whoami") == 0) {
         vga_print("  "); vga_print(env_get("USER") ? env_get("USER") : "root"); vga_print("\n");
     } else if (strcmp(input, "hostname") == 0) {
@@ -278,6 +289,7 @@ static void cmd_help(void) {
     vga_print("  unset <k> - Remove variable\n");
     vga_print("  calc <expr>- Calculator (+,-,*,/)\n");
     vga_print("  beep [hz] - PC speaker beep\n");
+    vga_print("  rand [max]- Random number\n");
     vga_print("  whoami    - Current user\n");
     vga_print("  hostname  - System hostname\n");
     vga_print("  halt      - Halt the CPU\n");

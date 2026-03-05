@@ -15,7 +15,7 @@ ASM_SOURCES = boot/boot.asm cpu/gdt_flush.asm cpu/idt_asm.asm cpu/isr_asm.asm ke
 C_SOURCES = kernel/kernel.c kernel/memory.c kernel/klog.c kernel/pmm.c kernel/vmm.c kernel/ramfs.c kernel/task.c kernel/syscall.c kernel/elf.c kernel/program.c kernel/env.c \
             cpu/gdt.c cpu/idt.c cpu/isr.c cpu/cpuid.c \
             drivers/vga.c drivers/keyboard.c drivers/timer.c drivers/serial.c drivers/pci.c drivers/rtl8139.c drivers/e1000.c drivers/usb_kbd.c drivers/rtc.c drivers/speaker.c \
-            libc/string.c \
+            libc/string.c libc/rand.c \
             net/net.c \
             shell/shell.c
 
