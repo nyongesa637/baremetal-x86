@@ -13,6 +13,7 @@
 #include "syscall.h"
 #include "elf.h"
 #include "program.h"
+#include "env.h"
 #include "../drivers/pci.h"
 #include "../drivers/usb_kbd.h"
 #include "../net/net.h"
@@ -73,6 +74,9 @@ void kernel_main(uint32_t magic, uint32_t mboot_addr) {
 
     syscall_init();
     klog_ok("Syscall interface initialized (int 0x80)");
+
+    env_init();
+    klog_ok("Environment variables initialized");
 
     programs_install();
     klog_ok("Built-in programs loaded to ramfs");

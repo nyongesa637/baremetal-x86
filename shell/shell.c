@@ -17,6 +17,7 @@
 #include "../net/net.h"
 #include "../drivers/rtc.h"
 #include "../cpu/cpuid.h"
+#include "../kernel/env.h"
 #include "../drivers/speaker.h"
 
 static void cmd_help(void);
@@ -53,6 +54,9 @@ static void cmd_hexdump(const char *args);
 static void cmd_beep(const char *args);
 static void cmd_grep(const char *args);
 static void cmd_calc(const char *args);
+static void cmd_env(void);
+static void cmd_set(const char *args);
+static void cmd_unset(const char *args);
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -160,6 +164,12 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (strcmp(input, "env") == 0) {
+        cmd_env();
+    } else if (starts_with(input, "set ")) {
+        cmd_set(input + 4);
+    } else if (starts_with(input, "unset ")) {
+        cmd_unset(input + 6);
     } else if (starts_with(input, "calc ")) {
         cmd_calc(input + 5);
     } else if (starts_with(input, "grep ")) {
@@ -231,6 +241,9 @@ static void cmd_help(void) {
     vga_print("  cpuinfo   - CPU information\n");
     vga_print("  date      - Show current date\n");
     vga_print("  time      - Show current time\n");
+    vga_print("  env       - Show all variables\n");
+    vga_print("  set <k>=<v>- Set variable\n");
+    vga_print("  unset <k> - Remove variable\n");
     vga_print("  calc <expr>- Calculator (+,-,*,/)\n");
     vga_print("  beep [hz] - PC speaker beep\n");
     vga_print("  halt      - Halt the CPU\n");
@@ -1186,4 +1199,66 @@ static void cmd_calc(const char *args) {
         vga_print("\n");
     }
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void cmd_env(void) {
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_print("=== Environment Variables ===\n");
+    int count = env_count();
+    for (int i = 0; i < count; i++) {
+        const char *key, *val;
+        env_get_pair(i, &key, &val);
+        vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
+        vga_print("  ");
+        vga_print(key);
+        vga_set_color(VGA_WHITE, VGA_BLACK);
+        vga_print("=");
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        vga_print(val);
+        vga_print("\n");
+    }
+    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+    vga_print_dec(count);
+    vga_print(" variable(s)\n");
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void cmd_set(const char *args) {
+    while (*args == ' ') args++;
+    // Parse KEY=VALUE
+    char key[ENV_KEY_SIZE];
+    int ki = 0;
+    while (*args && *args != '=' && ki < ENV_KEY_SIZE - 1) key[ki++] = *args++;
+    key[ki] = '\0';
+    if (*args != '=' || ki == 0) {
+        vga_print("Usage: set KEY=VALUE\n");
+        return;
+    }
+    args++; // skip =
+    if (env_set(key, args) == 0) {
+        vga_print("  ");
+        vga_print(key);
+        vga_print("=");
+        vga_print(args);
+        vga_print("\n");
+    } else {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("  Environment full.\n");
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+    }
+}
+
+static void cmd_unset(const char *args) {
+    while (*args == ' ') args++;
+    if (env_unset(args) == 0) {
+        vga_print("  Removed: ");
+        vga_print(args);
+        vga_print("\n");
+    } else {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("  Variable not found: ");
+        vga_print(args);
+        vga_print("\n");
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+    }
 }
