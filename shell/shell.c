@@ -20,6 +20,10 @@
 #include "../kernel/env.h"
 #include "../drivers/speaker.h"
 
+volatile int editor_mode = 0;
+volatile int editor_line_ready = 0;
+char editor_line_buf[256];
+
 static void cmd_help(void);
 static void cmd_clear(void);
 static void cmd_info(void);
@@ -57,6 +61,7 @@ static void cmd_calc(const char *args);
 static void cmd_env(void);
 static void cmd_set(const char *args);
 static void cmd_unset(const char *args);
+static void cmd_edit(const char *args);
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -164,6 +169,8 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (starts_with(input, "edit ")) {
+        cmd_edit(input + 5);
     } else if (strcmp(input, "env") == 0) {
         cmd_env();
     } else if (starts_with(input, "set ")) {
@@ -217,6 +224,7 @@ static void cmd_help(void) {
     vga_print("  touch <f> - Create empty file\n");
     vga_print("  write <f> <text> - Write to file\n");
     vga_print("  rm <f>    - Delete a file\n");
+    vga_print("  edit <f>  - Text editor\n");
     vga_print("  stat <f>  - File info\n");
     vga_print("  hexdump <f>- Hex dump of file\n");
     vga_print("  grep <s> <f>- Search in file\n");
@@ -1261,4 +1269,84 @@ static void cmd_unset(const char *args) {
         vga_print("\n");
         vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
     }
+}
+
+static void editor_wait_line(void) {
+    editor_line_ready = 0;
+    while (!editor_line_ready && !ctrl_c_pressed) {
+        __asm__ volatile("hlt");
+    }
+}
+
+static void cmd_edit(const char *args) {
+    while (*args == ' ') args++;
+    if (strlen(args) == 0) {
+        vga_print("Usage: edit <filename>\n");
+        return;
+    }
+
+    char content[RAMFS_MAX_FILESIZE];
+    int content_len = 0;
+    if (ramfs_exists(args)) {
+        content_len = ramfs_read(args, content, RAMFS_MAX_FILESIZE - 1);
+        if (content_len < 0) content_len = 0;
+    }
+    content[content_len] = '\0';
+
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_print("=== Editor: ");
+    vga_print(args);
+    vga_print(" ===\n");
+    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+    vga_print("  Type text. Commands: :w save, :q quit, :wq save+quit\n");
+
+    if (content_len > 0) {
+        vga_set_color(VGA_WHITE, VGA_BLACK);
+        vga_print(content);
+        if (content[content_len - 1] != '\n') vga_print("\n");
+    }
+
+    editor_mode = 1;
+    ctrl_c_pressed = 0;
+
+    while (!ctrl_c_pressed) {
+        vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+        vga_print("> ");
+        vga_set_color(VGA_WHITE, VGA_BLACK);
+
+        editor_wait_line();
+        if (ctrl_c_pressed) break;
+
+        if (strcmp(editor_line_buf, ":q") == 0) {
+            break;
+        } else if (strcmp(editor_line_buf, ":w") == 0) {
+            ramfs_write(args, content, content_len);
+            vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+            vga_print("  Saved ");
+            vga_print_dec(content_len);
+            vga_print(" bytes\n");
+            continue;
+        } else if (strcmp(editor_line_buf, ":wq") == 0) {
+            ramfs_write(args, content, content_len);
+            vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+            vga_print("  Saved ");
+            vga_print_dec(content_len);
+            vga_print(" bytes\n");
+            break;
+        }
+
+        int line_len = strlen(editor_line_buf);
+        if (content_len + line_len + 1 < RAMFS_MAX_FILESIZE) {
+            memcpy(content + content_len, editor_line_buf, line_len);
+            content_len += line_len;
+            content[content_len++] = '\n';
+            content[content_len] = '\0';
+        } else {
+            vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+            vga_print("  File full!\n");
+        }
+    }
+
+    editor_mode = 0;
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
 }

@@ -106,6 +106,25 @@ static void keyboard_callback(registers_t *regs) {
         return;
     }
 
+    // Editor mode: route input to editor buffer
+    if (editor_mode && scancode < sizeof(scancode_ascii)) {
+        char c = shift_held ? scancode_ascii_shift[scancode] : scancode_ascii[scancode];
+        static int elen = 0;
+        if (c == '\b') {
+            if (elen > 0) { elen--; editor_line_buf[elen] = '\0'; vga_backspace(); }
+        } else if (c == '\n') {
+            vga_putchar('\n');
+            editor_line_buf[elen] = '\0';
+            editor_line_ready = 1;
+            elen = 0;
+        } else if (c != 0 && elen < 254) {
+            editor_line_buf[elen++] = c;
+            editor_line_buf[elen] = '\0';
+            vga_putchar(c);
+        }
+        return;
+    }
+
     // Ctrl+L = clear screen
     if (ctrl_held && scancode == 0x26) {
         vga_clear();
