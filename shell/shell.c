@@ -15,6 +15,7 @@
 #include "../drivers/pci.h"
 #include "../drivers/keyboard.h"
 #include "../net/net.h"
+#include "../drivers/rtc.h"
 
 static void cmd_help(void);
 static void cmd_clear(void);
@@ -43,6 +44,8 @@ static void cmd_net(void);
 static void cmd_ping(const char *args);
 static void cmd_resolve(const char *args);
 static void cmd_pci(void);
+static void cmd_date(void);
+static void cmd_time(void);
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -150,6 +153,10 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (strcmp(input, "date") == 0) {
+        cmd_date();
+    } else if (strcmp(input, "time") == 0) {
+        cmd_time();
     } else {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
         vga_print("Unknown command: ");
@@ -202,6 +209,8 @@ static void cmd_help(void) {
     vga_set_color(VGA_YELLOW, VGA_BLACK);
     vga_print("=== System ===\n");
     vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print("  date      - Show current date\n");
+    vga_print("  time      - Show current time\n");
     vga_print("  halt      - Halt the CPU\n");
     vga_print("  reboot    - Reboot the system\n");
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
@@ -859,5 +868,45 @@ static void cmd_pci(void) {
 
     vga_print_dec(count);
     vga_print(" device(s)\n");
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void print2d(uint32_t val) {
+    if (val < 10) vga_putchar('0');
+    vga_print_dec(val);
+}
+
+static const char *weekday_names[] = {
+    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+};
+
+static const char *month_names[] = {
+    "", "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+};
+
+static void cmd_date(void) {
+    rtc_time_t t;
+    rtc_read(&t);
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print("  ");
+    if (t.weekday < 7) { vga_print(weekday_names[t.weekday]); vga_print(", "); }
+    if (t.month >= 1 && t.month <= 12) { vga_print(month_names[t.month]); vga_print(" "); }
+    vga_print_dec(t.day);
+    vga_print(", ");
+    vga_print_dec(t.year);
+    vga_print("\n");
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void cmd_time(void) {
+    rtc_time_t t;
+    rtc_read(&t);
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print("  ");
+    print2d(t.hour); vga_putchar(':');
+    print2d(t.minute); vga_putchar(':');
+    print2d(t.second);
+    vga_print(" UTC\n");
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
 }
