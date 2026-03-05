@@ -20,6 +20,7 @@
 #include "../kernel/env.h"
 #include "../libc/rand.h"
 #include "../drivers/speaker.h"
+#include "../drivers/ports.h"
 
 volatile int editor_mode = 0;
 volatile int editor_line_ready = 0;
@@ -68,6 +69,7 @@ static void cmd_head(const char *args);
 static void cmd_tail(const char *args);
 static void cmd_append(const char *args);
 static void cmd_cp(const char *args);
+static void cmd_snake(void);
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -230,6 +232,8 @@ void shell_execute(const char *input) {
         cmd_date();
     } else if (strcmp(input, "time") == 0) {
         cmd_time();
+    } else if (strcmp(input, "snake") == 0) {
+        cmd_snake();
     } else {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
         vga_print("Unknown command: ");
@@ -304,6 +308,10 @@ static void cmd_help(void) {
     vga_print("  hostname  - System hostname\n");
     vga_print("  halt      - Halt the CPU\n");
     vga_print("  reboot    - Reboot the system\n");
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_print("=== Games ===\n");
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print("  snake     - Snake game (WASD/arrows)\n");
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
 }
 
@@ -1526,4 +1534,179 @@ static void cmd_cp(const char *args) {
         ramfs_write(dst, buf, n);
         vga_print("Copied "); vga_print(src); vga_print(" -> "); vga_print(dst); vga_print("\n");
     }
+}
+
+// ==================== Snake Game ====================
+
+#define SNAKE_MAX 200
+#define GAME_W 40
+#define GAME_H 20
+#define GAME_X0 20  // left offset to center 40-wide board in 80-col screen
+#define GAME_Y0 2   // top offset
+
+static void cmd_snake(void) {
+    rand_seed(timer_get_ticks());
+
+    int sx[SNAKE_MAX], sy[SNAKE_MAX];
+    int slen = 3;
+    int dx = 1, dy = 0;
+    int score = 0;
+    int game_over = 0;
+
+    // Initial snake position (center)
+    for (int i = 0; i < slen; i++) {
+        sx[i] = GAME_W / 2 - i;
+        sy[i] = GAME_H / 2;
+    }
+
+    // Place food
+    int fx = rand_range(1, GAME_W - 2);
+    int fy = rand_range(1, GAME_H - 2);
+
+    // Draw initial board
+    vga_clear();
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_put_at(GAME_X0, 0, 'S', VGA_LIGHT_GREEN, VGA_BLACK);
+    vga_put_at(GAME_X0+1, 0, 'N', VGA_LIGHT_GREEN, VGA_BLACK);
+    vga_put_at(GAME_X0+2, 0, 'A', VGA_LIGHT_GREEN, VGA_BLACK);
+    vga_put_at(GAME_X0+3, 0, 'K', VGA_LIGHT_GREEN, VGA_BLACK);
+    vga_put_at(GAME_X0+4, 0, 'E', VGA_LIGHT_GREEN, VGA_BLACK);
+    vga_put_at(GAME_X0+6, 0, 'W', VGA_WHITE, VGA_BLACK);
+    vga_put_at(GAME_X0+7, 0, 'A', VGA_WHITE, VGA_BLACK);
+    vga_put_at(GAME_X0+8, 0, 'S', VGA_WHITE, VGA_BLACK);
+    vga_put_at(GAME_X0+9, 0, 'D', VGA_WHITE, VGA_BLACK);
+    vga_put_at(GAME_X0+10, 0, '/', VGA_WHITE, VGA_BLACK);
+    vga_put_at(GAME_X0+11, 0, 'A', VGA_WHITE, VGA_BLACK);
+    vga_put_at(GAME_X0+12, 0, 'r', VGA_WHITE, VGA_BLACK);
+    vga_put_at(GAME_X0+13, 0, 'r', VGA_WHITE, VGA_BLACK);
+    vga_put_at(GAME_X0+14, 0, 'o', VGA_WHITE, VGA_BLACK);
+    vga_put_at(GAME_X0+15, 0, 'w', VGA_WHITE, VGA_BLACK);
+    vga_put_at(GAME_X0+16, 0, 's', VGA_WHITE, VGA_BLACK);
+    // Score label
+    vga_put_at(GAME_X0, 1, 'S', VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_put_at(GAME_X0+1, 1, 'c', VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_put_at(GAME_X0+2, 1, 'o', VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_put_at(GAME_X0+3, 1, 'r', VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_put_at(GAME_X0+4, 1, 'e', VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_put_at(GAME_X0+5, 1, ':', VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_put_at(GAME_X0+6, 1, ' ', VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_put_at(GAME_X0+7, 1, '0', VGA_WHITE, VGA_BLACK);
+
+    // Draw borders
+    for (int x = 0; x < GAME_W; x++) {
+        vga_put_at(GAME_X0 + x, GAME_Y0, '#', VGA_DARK_GREY, VGA_BLACK);
+        vga_put_at(GAME_X0 + x, GAME_Y0 + GAME_H - 1, '#', VGA_DARK_GREY, VGA_BLACK);
+    }
+    for (int y = 0; y < GAME_H; y++) {
+        vga_put_at(GAME_X0, GAME_Y0 + y, '#', VGA_DARK_GREY, VGA_BLACK);
+        vga_put_at(GAME_X0 + GAME_W - 1, GAME_Y0 + y, '#', VGA_DARK_GREY, VGA_BLACK);
+    }
+
+    // Draw initial snake
+    for (int i = 0; i < slen; i++) {
+        vga_put_at(GAME_X0 + sx[i], GAME_Y0 + sy[i],
+                   i == 0 ? '@' : 'o', VGA_LIGHT_GREEN, VGA_BLACK);
+    }
+    // Draw food
+    vga_put_at(GAME_X0 + fx, GAME_Y0 + fy, '*', VGA_LIGHT_RED, VGA_BLACK);
+
+    uint32_t last_tick = timer_get_ticks();
+    int speed = 8; // ticks between moves (lower = faster)
+
+    while (!game_over) {
+        if (ctrl_c_pressed) {
+            ctrl_c_pressed = 0;
+            break;
+        }
+
+        // Poll keyboard for direction changes
+        uint8_t status = port_byte_in(0x64);
+        if (status & 1) {
+            uint8_t sc = port_byte_in(0x60);
+            // WASD or arrow keys
+            if ((sc == 0x11 || sc == 0x48) && dy != 1)  { dx = 0; dy = -1; } // W / Up
+            if ((sc == 0x1F || sc == 0x50) && dy != -1) { dx = 0; dy = 1; }  // S / Down
+            if ((sc == 0x1E || sc == 0x4B) && dx != 1)  { dx = -1; dy = 0; } // A / Left
+            if ((sc == 0x20 || sc == 0x4D) && dx != -1) { dx = 1; dy = 0; }  // D / Right
+            if (sc == 0x01) { game_over = 1; break; } // Escape
+        }
+
+        uint32_t now = timer_get_ticks();
+        if (now - last_tick < (uint32_t)speed) {
+            __asm__ volatile("hlt");
+            continue;
+        }
+        last_tick = now;
+
+        // Erase tail
+        int tail_idx = slen - 1;
+        vga_put_at(GAME_X0 + sx[tail_idx], GAME_Y0 + sy[tail_idx], ' ', VGA_BLACK, VGA_BLACK);
+
+        // Move body
+        for (int i = slen - 1; i > 0; i--) {
+            sx[i] = sx[i-1];
+            sy[i] = sy[i-1];
+        }
+
+        // Move head
+        sx[0] += dx;
+        sy[0] += dy;
+
+        // Wall collision
+        if (sx[0] <= 0 || sx[0] >= GAME_W - 1 || sy[0] <= 0 || sy[0] >= GAME_H - 1) {
+            game_over = 1;
+            break;
+        }
+
+        // Self collision
+        for (int i = 1; i < slen; i++) {
+            if (sx[0] == sx[i] && sy[0] == sy[i]) {
+                game_over = 1;
+                break;
+            }
+        }
+        if (game_over) break;
+
+        // Food collision
+        if (sx[0] == fx && sy[0] == fy) {
+            score++;
+            if (slen < SNAKE_MAX) {
+                sx[slen] = sx[slen - 1];
+                sy[slen] = sy[slen - 1];
+                slen++;
+            }
+            if (speed > 3 && score % 5 == 0) speed--; // speed up every 5 points
+            speaker_beep(1000, 50);
+            // New food (avoid snake)
+            int placed = 0;
+            while (!placed) {
+                fx = rand_range(1, GAME_W - 2);
+                fy = rand_range(1, GAME_H - 2);
+                placed = 1;
+                for (int i = 0; i < slen; i++) {
+                    if (sx[i] == fx && sy[i] == fy) { placed = 0; break; }
+                }
+            }
+            vga_put_at(GAME_X0 + fx, GAME_Y0 + fy, '*', VGA_LIGHT_RED, VGA_BLACK);
+            // Update score display
+            char sbuf[8];
+            itoa(score, sbuf, 10);
+            for (int i = 0; sbuf[i]; i++)
+                vga_put_at(GAME_X0 + 7 + i, 1, sbuf[i], VGA_WHITE, VGA_BLACK);
+        }
+
+        // Draw snake
+        vga_put_at(GAME_X0 + sx[0], GAME_Y0 + sy[0], '@', VGA_LIGHT_GREEN, VGA_BLACK);
+        if (slen > 1)
+            vga_put_at(GAME_X0 + sx[1], GAME_Y0 + sy[1], 'o', VGA_GREEN, VGA_BLACK);
+    }
+
+    // Game over message
+    speaker_beep(200, 300);
+    vga_set_cursor(0, GAME_Y0 + GAME_H + 1);
+    vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+    vga_print("  GAME OVER! Score: ");
+    vga_print_dec(score);
+    vga_print("\n");
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
 }

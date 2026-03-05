@@ -97,6 +97,21 @@ int vga_get_cursor_x(void) {
     return cursor_x;
 }
 
+int vga_get_cursor_y(void) {
+    return cursor_y;
+}
+
+void vga_put_at(int x, int y, char c, uint8_t fg, uint8_t bg) {
+    if (x < 0 || x >= VGA_WIDTH || y < 0 || y >= VGA_HEIGHT) return;
+    video_memory[y * VGA_WIDTH + x] = make_vga_entry(c, make_color(fg, bg));
+}
+
+void vga_set_cursor(int x, int y) {
+    cursor_x = x;
+    cursor_y = y;
+    update_cursor();
+}
+
 void vga_print_color(const char *str, uint8_t fg, uint8_t bg) {
     uint8_t old = current_color;
     current_color = make_color(fg, bg);
