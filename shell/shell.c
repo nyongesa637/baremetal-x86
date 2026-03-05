@@ -175,6 +175,15 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (strcmp(input, "history") == 0) {
+        int count = kbd_history_count();
+        for (int i = count - 1; i >= 0; i--) {
+            vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+            vga_print("  "); vga_print_dec(count - i); vga_print("  ");
+            vga_set_color(VGA_WHITE, VGA_BLACK);
+            vga_print(kbd_history_get(i)); vga_print("\n");
+        }
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
     } else if (strcmp(input, "rand") == 0 || starts_with(input, "rand ")) {
         rand_seed(timer_get_ticks());
         uint32_t max = 100;
@@ -289,6 +298,7 @@ static void cmd_help(void) {
     vga_print("  unset <k> - Remove variable\n");
     vga_print("  calc <expr>- Calculator (+,-,*,/)\n");
     vga_print("  beep [hz] - PC speaker beep\n");
+    vga_print("  history   - Command history\n");
     vga_print("  rand [max]- Random number\n");
     vga_print("  whoami    - Current user\n");
     vga_print("  hostname  - System hostname\n");

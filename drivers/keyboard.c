@@ -195,6 +195,12 @@ static void keyboard_callback(registers_t *regs) {
     }
 }
 
+int kbd_history_count(void) { return history_count; }
+const char *kbd_history_get(int index) {
+    if (index >= 0 && index < history_count) return history[index];
+    return 0;
+}
+
 void keyboard_init(void) {
     key_buffer_len = 0;
     key_buffer[0] = '\0';

@@ -13,4 +13,8 @@ extern int key_buffer_len;
 // Ctrl+C interrupt flag
 extern volatile int ctrl_c_pressed;
 
+// Command history access
+int kbd_history_count(void);
+const char *kbd_history_get(int index);
+
 #endif
