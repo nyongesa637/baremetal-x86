@@ -52,6 +52,7 @@ static void cmd_cpuinfo(void);
 static void cmd_hexdump(const char *args);
 static void cmd_beep(const char *args);
 static void cmd_grep(const char *args);
+static void cmd_calc(const char *args);
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -159,6 +160,8 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (starts_with(input, "calc ")) {
+        cmd_calc(input + 5);
     } else if (starts_with(input, "grep ")) {
         cmd_grep(input + 5);
     } else if (strcmp(input, "beep") == 0 || starts_with(input, "beep ")) {
@@ -228,6 +231,7 @@ static void cmd_help(void) {
     vga_print("  cpuinfo   - CPU information\n");
     vga_print("  date      - Show current date\n");
     vga_print("  time      - Show current time\n");
+    vga_print("  calc <expr>- Calculator (+,-,*,/)\n");
     vga_print("  beep [hz] - PC speaker beep\n");
     vga_print("  halt      - Halt the CPU\n");
     vga_print("  reboot    - Reboot the system\n");
@@ -1101,5 +1105,85 @@ static void cmd_grep(const char *args) {
     vga_set_color(VGA_DARK_GREY, VGA_BLACK);
     vga_print_dec(matches);
     vga_print(" match(es)\n");
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+// Simple recursive descent calculator
+static const char *calc_ptr;
+static int calc_error;
+
+static int calc_expr(void);
+
+static int calc_number(void) {
+    while (*calc_ptr == ' ') calc_ptr++;
+    int neg = 0;
+    if (*calc_ptr == '-') { neg = 1; calc_ptr++; }
+    if (*calc_ptr == '(') {
+        calc_ptr++;
+        int val = calc_expr();
+        if (*calc_ptr == ')') calc_ptr++;
+        return neg ? -val : val;
+    }
+    if (*calc_ptr < '0' || *calc_ptr > '9') { calc_error = 1; return 0; }
+    int val = 0;
+    while (*calc_ptr >= '0' && *calc_ptr <= '9') {
+        val = val * 10 + (*calc_ptr - '0');
+        calc_ptr++;
+    }
+    return neg ? -val : val;
+}
+
+static int calc_term(void) {
+    int val = calc_number();
+    while (!calc_error) {
+        while (*calc_ptr == ' ') calc_ptr++;
+        if (*calc_ptr == '*') { calc_ptr++; val *= calc_number(); }
+        else if (*calc_ptr == '/') {
+            calc_ptr++;
+            int d = calc_number();
+            if (d == 0) { calc_error = 1; return 0; }
+            val /= d;
+        }
+        else if (*calc_ptr == '%') {
+            calc_ptr++;
+            int d = calc_number();
+            if (d == 0) { calc_error = 1; return 0; }
+            val %= d;
+        }
+        else break;
+    }
+    return val;
+}
+
+static int calc_expr(void) {
+    int val = calc_term();
+    while (!calc_error) {
+        while (*calc_ptr == ' ') calc_ptr++;
+        if (*calc_ptr == '+') { calc_ptr++; val += calc_term(); }
+        else if (*calc_ptr == '-') { calc_ptr++; val -= calc_term(); }
+        else break;
+    }
+    return val;
+}
+
+static void cmd_calc(const char *args) {
+    while (*args == ' ') args++;
+    if (strlen(args) == 0) {
+        vga_print("Usage: calc <expression>\n");
+        return;
+    }
+    calc_ptr = args;
+    calc_error = 0;
+    int result = calc_expr();
+    if (calc_error) {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("  Error: invalid expression\n");
+    } else {
+        vga_set_color(VGA_WHITE, VGA_BLACK);
+        vga_print("  = ");
+        if (result < 0) { vga_putchar('-'); result = -result; }
+        vga_print_dec(result);
+        vga_print("\n");
+    }
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
 }
