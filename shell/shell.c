@@ -51,6 +51,7 @@ static void cmd_time(void);
 static void cmd_cpuinfo(void);
 static void cmd_hexdump(const char *args);
 static void cmd_beep(const char *args);
+static void cmd_grep(const char *args);
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -158,6 +159,8 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (starts_with(input, "grep ")) {
+        cmd_grep(input + 5);
     } else if (strcmp(input, "beep") == 0 || starts_with(input, "beep ")) {
         cmd_beep(strlen(input) > 4 ? input + 5 : "");
     } else if (starts_with(input, "hexdump ")) {
@@ -203,6 +206,7 @@ static void cmd_help(void) {
     vga_print("  rm <f>    - Delete a file\n");
     vga_print("  stat <f>  - File info\n");
     vga_print("  hexdump <f>- Hex dump of file\n");
+    vga_print("  grep <s> <f>- Search in file\n");
     vga_set_color(VGA_YELLOW, VGA_BLACK);
     vga_print("=== Tasks ===\n");
     vga_set_color(VGA_WHITE, VGA_BLACK);
@@ -1009,4 +1013,93 @@ static void cmd_beep(const char *args) {
     vga_print_dec(freq);
     vga_print(" Hz\n");
     speaker_beep(freq, 200);
+}
+
+static int strstr_pos(const char *haystack, const char *needle) {
+    int nlen = strlen(needle);
+    if (nlen == 0) return -1;
+    for (int i = 0; haystack[i]; i++) {
+        int match = 1;
+        for (int j = 0; j < nlen; j++) {
+            if (haystack[i + j] == '\0' || haystack[i + j] != needle[j]) {
+                match = 0;
+                break;
+            }
+        }
+        if (match) return i;
+    }
+    return -1;
+}
+
+static void cmd_grep(const char *args) {
+    while (*args == ' ') args++;
+    char pattern[64];
+    int pi = 0;
+    while (*args && *args != ' ' && pi < 63) pattern[pi++] = *args++;
+    pattern[pi] = '\0';
+    while (*args == ' ') args++;
+
+    if (pi == 0 || strlen(args) == 0) {
+        vga_print("Usage: grep <pattern> <filename>\n");
+        return;
+    }
+
+    if (!ramfs_exists(args)) {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("File not found: "); vga_print(args); vga_print("\n");
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        return;
+    }
+
+    char buf[RAMFS_MAX_FILESIZE + 1];
+    int n = ramfs_read(args, buf, RAMFS_MAX_FILESIZE);
+    if (n <= 0) return;
+    buf[n] = '\0';
+
+    int line_num = 1;
+    int matches = 0;
+    char *line = buf;
+    while (*line) {
+        if (ctrl_c_pressed) break;
+        char *eol = line;
+        while (*eol && *eol != '\n') eol++;
+
+        char saved = *eol;
+        *eol = '\0';
+
+        if (strstr_pos(line, pattern) >= 0) {
+            vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+            vga_print_dec(line_num);
+            vga_print(": ");
+            // Print line, highlighting matches
+            const char *p = line;
+            int plen = strlen(pattern);
+            while (*p) {
+                int pos = strstr_pos(p, pattern);
+                if (pos >= 0) {
+                    vga_set_color(VGA_WHITE, VGA_BLACK);
+                    for (int i = 0; i < pos; i++) vga_putchar(p[i]);
+                    vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+                    for (int i = 0; i < plen; i++) vga_putchar(pattern[i]);
+                    p += pos + plen;
+                } else {
+                    vga_set_color(VGA_WHITE, VGA_BLACK);
+                    vga_print(p);
+                    break;
+                }
+            }
+            vga_putchar('\n');
+            matches++;
+        }
+
+        *eol = saved;
+        if (saved == '\n') eol++;
+        line = eol;
+        line_num++;
+    }
+
+    vga_set_color(VGA_DARK_GREY, VGA_BLACK);
+    vga_print_dec(matches);
+    vga_print(" match(es)\n");
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
 }
