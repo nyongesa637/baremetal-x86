@@ -93,6 +93,10 @@ void vga_print(const char *str) {
     }
 }
 
+int vga_get_cursor_x(void) {
+    return cursor_x;
+}
+
 void vga_print_color(const char *str, uint8_t fg, uint8_t bg) {
     uint8_t old = current_color;
     current_color = make_color(fg, bg);

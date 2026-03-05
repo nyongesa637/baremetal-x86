@@ -36,5 +36,6 @@ void vga_set_color(uint8_t fg, uint8_t bg);
 void vga_print_hex(uint32_t value);
 void vga_print_dec(uint32_t value);
 void vga_backspace(void);
+int vga_get_cursor_x(void);
 
 #endif
