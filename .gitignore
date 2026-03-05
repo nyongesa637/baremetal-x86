@@ -1,0 +1,6 @@
+# Build artifacts
+*.o
+*.bin
+*.iso
+iso/boot/nimrodos.bin
+serial.log
