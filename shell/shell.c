@@ -70,6 +70,23 @@ static void cmd_tail(const char *args);
 static void cmd_append(const char *args);
 static void cmd_cp(const char *args);
 static void cmd_snake(void);
+static void cmd_alias(const char *args);
+static void cmd_unalias(const char *args);
+
+// Aliases
+#define MAX_ALIASES 16
+#define ALIAS_NAME_SIZE 32
+#define ALIAS_CMD_SIZE 128
+static char alias_names[MAX_ALIASES][ALIAS_NAME_SIZE];
+static char alias_cmds[MAX_ALIASES][ALIAS_CMD_SIZE];
+static int alias_count = 0;
+
+static const char *alias_lookup(const char *name) {
+    for (int i = 0; i < alias_count; i++) {
+        if (strcmp(alias_names[i], name) == 0) return alias_cmds[i];
+    }
+    return 0;
+}
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -106,6 +123,29 @@ void shell_execute(const char *input) {
     while (*input == ' ') input++;
 
     if (strlen(input) == 0) return;
+
+    // Alias expansion: check if first word matches an alias
+    char expanded[256];
+    {
+        // Extract first word
+        int wlen = 0;
+        while (input[wlen] && input[wlen] != ' ') wlen++;
+        char first[ALIAS_NAME_SIZE];
+        if (wlen < ALIAS_NAME_SIZE) {
+            strncpy(first, input, wlen);
+            first[wlen] = '\0';
+            const char *replacement = alias_lookup(first);
+            if (replacement) {
+                int rlen = strlen(replacement);
+                int rest = strlen(input + wlen);
+                if (rlen + rest < 255) {
+                    strcpy(expanded, replacement);
+                    strcpy(expanded + rlen, input + wlen);
+                    input = expanded;
+                }
+            }
+        }
+    }
 
     if (strcmp(input, "help") == 0) {
         cmd_help();
@@ -234,6 +274,10 @@ void shell_execute(const char *input) {
         cmd_time();
     } else if (strcmp(input, "snake") == 0) {
         cmd_snake();
+    } else if (strcmp(input, "alias") == 0 || starts_with(input, "alias ")) {
+        cmd_alias(strlen(input) > 5 ? input + 6 : "");
+    } else if (starts_with(input, "unalias ")) {
+        cmd_unalias(input + 8);
     } else {
         vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
         vga_print("Unknown command: ");
@@ -306,6 +350,8 @@ static void cmd_help(void) {
     vga_print("  rand [max]- Random number\n");
     vga_print("  whoami    - Current user\n");
     vga_print("  hostname  - System hostname\n");
+    vga_print("  alias [n=cmd] - Show/create alias\n");
+    vga_print("  unalias <n>- Remove alias\n");
     vga_print("  halt      - Halt the CPU\n");
     vga_print("  reboot    - Reboot the system\n");
     vga_set_color(VGA_YELLOW, VGA_BLACK);
@@ -1709,4 +1755,82 @@ static void cmd_snake(void) {
     vga_print_dec(score);
     vga_print("\n");
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+// ==================== Alias ====================
+
+static void cmd_alias(const char *args) {
+    // No args: list all aliases
+    if (strlen(args) == 0) {
+        if (alias_count == 0) {
+            vga_print("  No aliases defined.\n");
+            return;
+        }
+        for (int i = 0; i < alias_count; i++) {
+            vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
+            vga_print("  ");
+            vga_print(alias_names[i]);
+            vga_set_color(VGA_WHITE, VGA_BLACK);
+            vga_print(" = '");
+            vga_print(alias_cmds[i]);
+            vga_print("'\n");
+        }
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        return;
+    }
+
+    // Find '=' separator
+    const char *eq = args;
+    while (*eq && *eq != '=') eq++;
+    if (*eq != '=') {
+        vga_print("Usage: alias name=command\n");
+        return;
+    }
+
+    int nlen = eq - args;
+    if (nlen == 0 || nlen >= ALIAS_NAME_SIZE) {
+        vga_print("Invalid alias name.\n");
+        return;
+    }
+
+    char name[ALIAS_NAME_SIZE];
+    strncpy(name, args, nlen);
+    name[nlen] = '\0';
+    const char *cmd = eq + 1;
+
+    // Update existing alias
+    for (int i = 0; i < alias_count; i++) {
+        if (strcmp(alias_names[i], name) == 0) {
+            strncpy(alias_cmds[i], cmd, ALIAS_CMD_SIZE - 1);
+            alias_cmds[i][ALIAS_CMD_SIZE - 1] = '\0';
+            return;
+        }
+    }
+
+    // Add new
+    if (alias_count >= MAX_ALIASES) {
+        vga_print("Alias table full.\n");
+        return;
+    }
+    strncpy(alias_names[alias_count], name, ALIAS_NAME_SIZE - 1);
+    alias_names[alias_count][ALIAS_NAME_SIZE - 1] = '\0';
+    strncpy(alias_cmds[alias_count], cmd, ALIAS_CMD_SIZE - 1);
+    alias_cmds[alias_count][ALIAS_CMD_SIZE - 1] = '\0';
+    alias_count++;
+}
+
+static void cmd_unalias(const char *args) {
+    while (*args == ' ') args++;
+    for (int i = 0; i < alias_count; i++) {
+        if (strcmp(alias_names[i], args) == 0) {
+            // Shift remaining
+            for (int j = i; j < alias_count - 1; j++) {
+                strcpy(alias_names[j], alias_names[j+1]);
+                strcpy(alias_cmds[j], alias_cmds[j+1]);
+            }
+            alias_count--;
+            return;
+        }
+    }
+    vga_print("Alias not found: "); vga_print(args); vga_print("\n");
 }
