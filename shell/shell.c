@@ -62,6 +62,11 @@ static void cmd_env(void);
 static void cmd_set(const char *args);
 static void cmd_unset(const char *args);
 static void cmd_edit(const char *args);
+static void cmd_wc(const char *args);
+static void cmd_head(const char *args);
+static void cmd_tail(const char *args);
+static void cmd_append(const char *args);
+static void cmd_cp(const char *args);
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -171,6 +176,16 @@ void shell_execute(const char *input) {
         cmd_pci();
     } else if (starts_with(input, "edit ")) {
         cmd_edit(input + 5);
+    } else if (starts_with(input, "wc ")) {
+        cmd_wc(input + 3);
+    } else if (starts_with(input, "head ")) {
+        cmd_head(input + 5);
+    } else if (starts_with(input, "tail ")) {
+        cmd_tail(input + 5);
+    } else if (starts_with(input, "append ")) {
+        cmd_append(input + 7);
+    } else if (starts_with(input, "cp ")) {
+        cmd_cp(input + 3);
     } else if (strcmp(input, "env") == 0) {
         cmd_env();
     } else if (starts_with(input, "set ")) {
@@ -225,6 +240,11 @@ static void cmd_help(void) {
     vga_print("  write <f> <text> - Write to file\n");
     vga_print("  rm <f>    - Delete a file\n");
     vga_print("  edit <f>  - Text editor\n");
+    vga_print("  append <f> <text> - Append to file\n");
+    vga_print("  cp <s> <d>- Copy file\n");
+    vga_print("  wc <f>    - Word/line/byte count\n");
+    vga_print("  head <f>  - First 10 lines\n");
+    vga_print("  tail <f>  - Last 10 lines\n");
     vga_print("  stat <f>  - File info\n");
     vga_print("  hexdump <f>- Hex dump of file\n");
     vga_print("  grep <s> <f>- Search in file\n");
@@ -1349,4 +1369,133 @@ static void cmd_edit(const char *args) {
 
     editor_mode = 0;
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void cmd_wc(const char *args) {
+    while (*args == ' ') args++;
+    if (!ramfs_exists(args)) {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("File not found: "); vga_print(args); vga_print("\n");
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        return;
+    }
+    char buf[RAMFS_MAX_FILESIZE + 1];
+    int n = ramfs_read(args, buf, RAMFS_MAX_FILESIZE);
+    if (n <= 0) { vga_print("  0 0 0\n"); return; }
+    buf[n] = '\0';
+    int lines = 0, words = 0, in_word = 0;
+    for (int i = 0; i < n; i++) {
+        if (buf[i] == '\n') lines++;
+        if (buf[i] == ' ' || buf[i] == '\n' || buf[i] == '\t') {
+            in_word = 0;
+        } else if (!in_word) {
+            in_word = 1;
+            words++;
+        }
+    }
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print("  ");
+    vga_print_dec(lines); vga_print(" lines, ");
+    vga_print_dec(words); vga_print(" words, ");
+    vga_print_dec(n); vga_print(" bytes\n");
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void cmd_head(const char *args) {
+    while (*args == ' ') args++;
+    if (!ramfs_exists(args)) {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("File not found: "); vga_print(args); vga_print("\n");
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        return;
+    }
+    char buf[RAMFS_MAX_FILESIZE + 1];
+    int n = ramfs_read(args, buf, RAMFS_MAX_FILESIZE);
+    if (n <= 0) return;
+    buf[n] = '\0';
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    int lines = 0;
+    for (int i = 0; i < n && lines < 10; i++) {
+        vga_putchar(buf[i]);
+        if (buf[i] == '\n') lines++;
+    }
+    if (lines == 0 || buf[n - 1] != '\n') vga_putchar('\n');
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void cmd_tail(const char *args) {
+    while (*args == ' ') args++;
+    if (!ramfs_exists(args)) {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("File not found: "); vga_print(args); vga_print("\n");
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        return;
+    }
+    char buf[RAMFS_MAX_FILESIZE + 1];
+    int n = ramfs_read(args, buf, RAMFS_MAX_FILESIZE);
+    if (n <= 0) return;
+    buf[n] = '\0';
+    // Count total lines
+    int total = 0;
+    for (int i = 0; i < n; i++) if (buf[i] == '\n') total++;
+    int skip = total > 10 ? total - 10 : 0;
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    int lines = 0;
+    for (int i = 0; i < n; i++) {
+        if (lines >= skip) vga_putchar(buf[i]);
+        if (buf[i] == '\n') lines++;
+    }
+    if (buf[n - 1] != '\n') vga_putchar('\n');
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void cmd_append(const char *args) {
+    while (*args == ' ') args++;
+    char filename[RAMFS_MAX_NAME];
+    int i = 0;
+    while (*args && *args != ' ' && i < RAMFS_MAX_NAME - 1) filename[i++] = *args++;
+    filename[i] = '\0';
+    if (*args == ' ') args++;
+    if (i == 0 || *args == '\0') {
+        vga_print("Usage: append <filename> <text>\n");
+        return;
+    }
+    int n = ramfs_append(filename, args, strlen(args));
+    if (n >= 0) {
+        // Also append a newline
+        ramfs_append(filename, "\n", 1);
+        vga_print("Appended to "); vga_print(filename); vga_print("\n");
+    } else {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("Append failed.\n");
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+    }
+}
+
+static void cmd_cp(const char *args) {
+    while (*args == ' ') args++;
+    char src[RAMFS_MAX_NAME], dst[RAMFS_MAX_NAME];
+    int i = 0;
+    while (*args && *args != ' ' && i < RAMFS_MAX_NAME - 1) src[i++] = *args++;
+    src[i] = '\0';
+    while (*args == ' ') args++;
+    i = 0;
+    while (*args && *args != ' ' && i < RAMFS_MAX_NAME - 1) dst[i++] = *args++;
+    dst[i] = '\0';
+    if (strlen(src) == 0 || strlen(dst) == 0) {
+        vga_print("Usage: cp <source> <dest>\n");
+        return;
+    }
+    if (!ramfs_exists(src)) {
+        vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+        vga_print("File not found: "); vga_print(src); vga_print("\n");
+        vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+        return;
+    }
+    char buf[RAMFS_MAX_FILESIZE];
+    int n = ramfs_read(src, buf, RAMFS_MAX_FILESIZE);
+    if (n > 0) {
+        ramfs_write(dst, buf, n);
+        vga_print("Copied "); vga_print(src); vga_print(" -> "); vga_print(dst); vga_print("\n");
+    }
 }
