@@ -16,6 +16,7 @@
 #include "../drivers/keyboard.h"
 #include "../net/net.h"
 #include "../drivers/rtc.h"
+#include "../cpu/cpuid.h"
 
 static void cmd_help(void);
 static void cmd_clear(void);
@@ -46,6 +47,7 @@ static void cmd_resolve(const char *args);
 static void cmd_pci(void);
 static void cmd_date(void);
 static void cmd_time(void);
+static void cmd_cpuinfo(void);
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -153,6 +155,8 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (strcmp(input, "cpuinfo") == 0) {
+        cmd_cpuinfo();
     } else if (strcmp(input, "date") == 0) {
         cmd_date();
     } else if (strcmp(input, "time") == 0) {
@@ -209,6 +213,7 @@ static void cmd_help(void) {
     vga_set_color(VGA_YELLOW, VGA_BLACK);
     vga_print("=== System ===\n");
     vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print("  cpuinfo   - CPU information\n");
     vga_print("  date      - Show current date\n");
     vga_print("  time      - Show current time\n");
     vga_print("  halt      - Halt the CPU\n");
@@ -908,5 +913,28 @@ static void cmd_time(void) {
     print2d(t.minute); vga_putchar(':');
     print2d(t.second);
     vga_print(" UTC\n");
+    vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void cmd_cpuinfo(void) {
+    cpu_info_t info;
+    cpuid_detect(&info);
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_print("=== CPU Information ===\n");
+    vga_set_color(VGA_WHITE, VGA_BLACK);
+    vga_print("  Vendor: "); vga_print(info.vendor); vga_print("\n");
+    vga_print("  Brand:  "); vga_print(info.brand); vga_print("\n");
+    vga_print("  Family: "); vga_print_dec(info.family);
+    vga_print("  Model: "); vga_print_dec(info.model);
+    vga_print("  Stepping: "); vga_print_dec(info.stepping); vga_print("\n");
+    vga_print("  Features:");
+    if (info.has_fpu)  vga_print(" FPU");
+    if (info.has_sse)  vga_print(" SSE");
+    if (info.has_sse2) vga_print(" SSE2");
+    if (info.has_sse3) vga_print(" SSE3");
+    if (info.has_avx)  vga_print(" AVX");
+    if (info.has_apic) vga_print(" APIC");
+    if (info.has_msr)  vga_print(" MSR");
+    vga_print("\n");
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
 }
