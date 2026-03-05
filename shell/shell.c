@@ -17,6 +17,7 @@
 #include "../net/net.h"
 #include "../drivers/rtc.h"
 #include "../cpu/cpuid.h"
+#include "../drivers/speaker.h"
 
 static void cmd_help(void);
 static void cmd_clear(void);
@@ -49,6 +50,7 @@ static void cmd_date(void);
 static void cmd_time(void);
 static void cmd_cpuinfo(void);
 static void cmd_hexdump(const char *args);
+static void cmd_beep(const char *args);
 
 void shell_init(void) {
     vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
@@ -156,6 +158,8 @@ void shell_execute(const char *input) {
         cmd_resolve(input + 8);
     } else if (strcmp(input, "pci") == 0) {
         cmd_pci();
+    } else if (strcmp(input, "beep") == 0 || starts_with(input, "beep ")) {
+        cmd_beep(strlen(input) > 4 ? input + 5 : "");
     } else if (starts_with(input, "hexdump ")) {
         cmd_hexdump(input + 8);
     } else if (strcmp(input, "cpuinfo") == 0) {
@@ -220,6 +224,7 @@ static void cmd_help(void) {
     vga_print("  cpuinfo   - CPU information\n");
     vga_print("  date      - Show current date\n");
     vga_print("  time      - Show current time\n");
+    vga_print("  beep [hz] - PC speaker beep\n");
     vga_print("  halt      - Halt the CPU\n");
     vga_print("  reboot    - Reboot the system\n");
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
@@ -986,4 +991,22 @@ static void cmd_hexdump(const char *args) {
         vga_putchar('\n');
     }
     vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
+}
+
+static void cmd_beep(const char *args) {
+    while (*args == ' ') args++;
+    uint32_t freq = 800;
+    if (*args >= '0' && *args <= '9') {
+        freq = 0;
+        while (*args >= '0' && *args <= '9') {
+            freq = freq * 10 + (*args - '0');
+            args++;
+        }
+    }
+    if (freq < 20) freq = 20;
+    if (freq > 20000) freq = 20000;
+    vga_print("Beep at ");
+    vga_print_dec(freq);
+    vga_print(" Hz\n");
+    speaker_beep(freq, 200);
 }
